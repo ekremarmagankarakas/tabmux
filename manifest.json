@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "tabmux",
+  "version": "0.1.0",
+  "description": "Drive Chrome from the keyboard like tmux: a prefix key, modal commands, window panes, and saved sessions.",
+  "permissions": ["tabs", "storage", "system.display"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}
