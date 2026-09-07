@@ -6,9 +6,16 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "watch": "node scripts/build.mjs --watch"
+    "watch": "node scripts/build.mjs --watch",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "npm run build && playwright test",
+    "test": "npm run test:unit && npm run test:e2e"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "@playwright/test": "^1.48.0",
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.0",
+    "vitest": "^2.1.0"
   }
 }

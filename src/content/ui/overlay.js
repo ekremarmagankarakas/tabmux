@@ -14,6 +14,12 @@ import { ui } from "./shell.js";
 import { showStatus, hideStatus, idleStatus } from "./status.js";
 
 export function openOverlay(el, onKey) {
+  // Async openers (session/group pickers, detach's name-prefill fetch) call
+  // this only after an await, with nothing blocking a second prefix-command
+  // from firing during that gap and starting a second one. Rather than strand
+  // whichever opened first — unclosable, since activeOverlay would only ever
+  // point at the second — replace it outright.
+  if (activeOverlay) closeOverlay();
   ui().appendChild(el);
   const overlay = { el };
   if (onKey) {

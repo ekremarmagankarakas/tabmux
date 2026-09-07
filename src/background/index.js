@@ -6,7 +6,12 @@ import {
   cycleGroup, addToGroupByName, addTabToGroupId, removeFromGroup,
   listGroups, focusGroup, toggleGroupCollapse, renameGroup, closeGroup
 } from "./groups.js";
-import { newSession, getSessionName, saveSession, detach, listSessions, restoreSession, deleteSession } from "./sessions.js";
+import { newSession, getSessionName, saveSession, detach, listSessions, restoreSession, deleteSession, sessionNamesReady } from "./sessions.js";
+
+// No default_popup is declared, so a plain click on the toolbar icon would
+// otherwise do nothing — send it to Options instead, same destination as the
+// existing right-click → Options entry point.
+chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   handle(msg, sender)
@@ -16,6 +21,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 async function handle(msg, sender) {
+  await sessionNamesReady; // session-name tracking must be loaded before anything below reads it
   const tab = sender.tab; // the tab the command was issued from
   switch (msg.type) {
     case "new-tab":

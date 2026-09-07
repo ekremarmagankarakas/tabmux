@@ -109,6 +109,75 @@ d            detach: save this window's tabs, then close it
 Copy mode: `j k` line, `d u` half-page, `space b` page, `g G` top/bottom,
 `/` search, `n` next match, `q`/`Esc` exit.
 
+## Testing
+
+Two layers, matching what each is actually good at:
+
+- **Unit tests** (`test/unit/`, run via [Vitest](https://vitest.dev)) exercise
+  `background/` and `content/` modules directly, against `test/mocks/chrome.js`
+  — a small stateful fake of the chrome.* surface tabmux uses (real windows/
+  tabs/groups/storage state, not just "was this called" spies), so tests
+  catch actual logic bugs: debounced autosave, session dedup, group
+  reconstruction on restore, the modifier-key and double-overlay bugs found
+  during development, etc.
+- **Integration tests** (`test/e2e/`, run via [Playwright](https://playwright.dev))
+  load the real built extension into a real Chromium and drive every prefix
+  command with actual keyboard input — the things a unit test can't reach
+  because they depend on Chrome's own extension/tab machinery: the content
+  script actually registering, `chrome.storage` actually round-tripping
+  through the options page, a keypress actually creating a real tab or
+  grouping one for real. `test/e2e/fixtures.js` also exposes the background
+  service worker itself (`serviceWorker.evaluate(...)`), so tests can call
+  the real `chrome.tabs`/`chrome.tabGroups`/`chrome.storage` APIs directly —
+  both to set up scenarios (e.g. pre-grouping tabs) and to assert on ground
+  truth, not just whatever tabmux's own UI happens to render.
+
+  | file | covers |
+  |---|---|
+  | `basic.spec.js` | `?` help, `c` new tab, options page ↔ live prefix change |
+  | `tabs.spec.js` | `x`, `n`/`p`, digit jump, `Tab`/`;` |
+  | `tab-groups.spec.js` | `g`/`G`, `t`, `S`, `B` |
+  | `sessions.spec.js` | `N`, `s`, `d`, and the `:` verbs (`save`/`restore`/`kill`/`group`/`ungroup`/`new`) |
+  | `copy-mode.spec.js` | `[`, scroll keys, `/` search, `q`/Escape |
+
+```
+npm run test:unit   # fast, no browser — Vitest
+npm run test:e2e    # npm run build, then Playwright against dist/ in real Chromium
+npm test            # both
+```
+
+`background/tabs.js` and `background/sessions.js` register chrome.* listeners
+(and, for sessions.js, kick off a `chrome.storage.session` read) at import
+time and hold module-level state — so their unit tests reload the module
+fresh per test (`vi.resetModules()` + a real dynamic `import()`) rather than
+reusing one cached instance, to keep tests isolated from each other.
+
+The first `test:e2e` run needs Chromium's test binary once:
+`npx playwright install chromium`.
+
+A few non-obvious things the e2e suite works around, worth knowing before
+adding more:
+- **`--load-extension` + a persistent context has a brief startup window**
+  where the service worker exists but its `chrome.tabs.*`/`chrome.tabGroups.*`
+  listeners aren't reliably receiving events yet — confirmed by inspecting
+  `background/tabs.js`'s internal state directly. `fixtures.js`'s `context`
+  fixture waits out a short settle period after launch so this doesn't cause
+  flaky failures; it's an automation-launch artifact, not a product bug.
+- **A fresh persistent context starts with one pre-existing blank tab.**
+  `closeInitialBlankTab()` in `helpers.js` removes it wherever a test's
+  assertions depend on tab order/position.
+- **`Control+A` doesn't mean "select all" on macOS** (it's "move to start of
+  line" there) — use `page.locator("input").fill(...)` to replace a
+  prompt's prefilled value instead of trying to select-then-type.
+- **A session's dedup/attach logic means restoring only recreates tabs if
+  the source session isn't live anywhere else** — tests that want to see an
+  actual restore (not just a focus-switch to the still-open source window)
+  need to `detach` the source first.
+- **`window.open(url, "_blank", "popup")` isn't a reliable way to get a
+  genuinely separate window** under CDP automation in practice; `openWindow()`
+  in `helpers.js` goes through the real `chrome.windows.create` API via the
+  service worker instead.
+
 ## Known limitations
 
 - **Won't run on `chrome://` pages, the Web Store, or the New Tab Page.** Chrome
@@ -123,6 +192,7 @@ Copy mode: `j k` line, `d u` half-page, `space b` page, `g G` top/bottom,
 ```
 src/
 ├── manifest.json           MV3 manifest and permissions (copied as-is to dist/)
+├── icons/                  16/32/48/128px, copied as-is to dist/icons/
 ├── background/             service worker — one file per concern
 │   ├── index.js              message listener + dispatch table
 │   ├── tabs.js                cycle/select/last-tab + recent-tab tracking
@@ -151,6 +221,21 @@ src/
 scripts/build.mjs   esbuild bundler (background/index.js, content/main.js,
                      options/options.js → dist/*.js; copies manifest + html)
 dist/                build output — load THIS folder as the unpacked extension
+
+test/
+├── mocks/chrome.js         stateful fake chrome.* API, shared by unit tests
+├── unit/
+│   ├── background/           tabs.js / groups.js / sessions.js
+│   └── content/               utils.js / mode.js / overlay.js
+└── e2e/
+    ├── fixtures.js            launches dist/ in real Chromium, exposes the
+    │                           service worker + a local fixture server
+    ├── helpers.js              chrome.tabs/tabGroups/storage assertion helpers
+    ├── basic.spec.js           ?, c, options page ↔ live prefix
+    ├── tabs.spec.js            x, n/p, digit jump, Tab/;
+    ├── tab-groups.spec.js      g/G, t, S, B
+    ├── sessions.spec.js        N, s, d, and the : verbs
+    └── copy-mode.spec.js       [, scroll keys, / search, q/Escape
 ```
 
 Each background/content file owns exactly one concern. `background/index.js`

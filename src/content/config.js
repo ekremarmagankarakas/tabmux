@@ -2,6 +2,9 @@
 // chrome.storage.local and kept live via storage.onChanged. `config` is a
 // single mutable object — importers keep one reference to it and always see
 // the current values (its fields are updated in place, never reassigned).
+import { mode } from "./state.js";
+import { showStatus, hideStatus, idleStatus } from "./ui/status.js";
+
 export const DEFAULTS = {
   prefix: { ctrl: true, alt: false, shift: false, key: "b" }, // tmux-style Ctrl-b
   timeoutMs: 2500,        // auto-leave command mode after inactivity
@@ -20,6 +23,15 @@ export function initConfig(onReady) {
     onReady();
   });
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes[STORAGE_KEY]) Object.assign(config, changes[STORAGE_KEY].newValue);
+    if (!changes[STORAGE_KEY]) return;
+    Object.assign(config, changes[STORAGE_KEY].newValue);
+    // Only touch the bar outside command/copy mode and overlays — a mode
+    // transition's own showStatus/hideStatus call will pick up the new
+    // config next time regardless, so this is just for "changed the options
+    // page while idle" not disturbing whatever's currently on screen.
+    if (mode === "normal") {
+      if (config.alwaysShowStatus) showStatus(idleStatus());
+      else hideStatus();
+    }
   });
 }

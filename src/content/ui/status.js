@@ -1,17 +1,25 @@
 // The bottom status bar and the transient toast, plus the prefix label they
 // both share.
 import { config } from "../config.js";
+import { escapeHtml } from "../utils.js";
 import { ui } from "./shell.js";
 
 let barEl, toastEl, toastTimer;
 
+// Every call site (here and in keymap.js's help overlay) interpolates this
+// straight into innerHTML — escape once, here, rather than trusting every
+// caller to remember it. config.prefix.key is user-supplied (the options
+// page's single-character field has no charset filter beyond lowercasing),
+// so a prefix key of `<` or `"` would otherwise be self-inflicted broken
+// markup in the user's own status bar/help overlay — not exploitable by
+// anyone else, but cheap to just not allow.
 export function prefixLabel() {
   const p = config.prefix;
   const m = [];
   if (p.ctrl) m.push("C");
   if (p.alt) m.push("A");
   if (p.shift) m.push("S");
-  return m.concat(p.key).join("-");
+  return escapeHtml(m.concat(p.key).join("-"));
 }
 
 export function idleStatus() {

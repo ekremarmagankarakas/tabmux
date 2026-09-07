@@ -33,6 +33,13 @@ async function copyStatic() {
   await fs.mkdir(DIST, { recursive: true });
   await fs.copyFile(path.join(SRC, "manifest.json"), path.join(DIST, "manifest.json"));
   await fs.copyFile(path.join(SRC, "options", "options.html"), path.join(DIST, "options.html"));
+
+  const iconsOut = path.join(DIST, "icons");
+  await fs.mkdir(iconsOut, { recursive: true });
+  for (const size of [16, 32, 48, 128]) {
+    const name = `icon${size}.png`;
+    await fs.copyFile(path.join(SRC, "icons", name), path.join(iconsOut, name));
+  }
 }
 
 async function main() {
