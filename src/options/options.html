@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>tabmux options</title>
+<style>
+  /* Two-color scheme: #1C1C1D (bg) / #E4E4E5 (text). Everything else is an
+     alpha variant or a straight inversion of those two, not a third hue. */
+  :root {
+    --bg: #1C1C1D;
+    --fg: #E4E4E5;
+    --fg-muted: rgba(228, 228, 229, 0.55);
+    --border: rgba(228, 228, 229, 0.2);
+    --field-bg: rgba(228, 228, 229, 0.06);
+  }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: var(--bg); color: var(--fg); margin: 0; padding: 28px 32px; }
+  h1 { font-size: 15px; color: var(--fg); margin: 0 0 4px; }
+  p.sub { color: var(--fg-muted); margin: 0 0 22px; font-size: 12px; }
+  fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 18px; padding: 14px 16px; }
+  legend { color: var(--fg); font-size: 12px; padding: 0 6px; }
+  label { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 13px; }
+  input[type=text] { all: unset; background: var(--field-bg); border: 1px solid var(--border); border-radius: 4px;
+                     padding: 4px 8px; width: 48px; text-align: center; color: var(--fg); }
+  input[type=number] { all: unset; background: var(--field-bg); border: 1px solid var(--border); border-radius: 4px;
+                       padding: 4px 8px; width: 80px; color: var(--fg); }
+  .save { margin-top: 6px; }
+  button { all: unset; background: var(--fg); color: var(--bg); padding: 7px 16px; border-radius: 5px;
+           cursor: pointer; font-size: 13px; }
+  button:hover { opacity: .85; }
+  .ok { color: var(--fg); margin-left: 12px; font-size: 12px; opacity: 0; transition: opacity .2s; }
+  .ok.show { opacity: 1; }
+  .note { color: var(--fg-muted); font-size: 11px; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h1>tabmux</h1>
+  <p class="sub">drive Chrome like tmux — configure your prefix below</p>
+
+  <fieldset>
+    <legend>prefix</legend>
+    <label><input type="checkbox" id="ctrl" /> Ctrl</label>
+    <label><input type="checkbox" id="alt" /> Alt</label>
+    <label><input type="checkbox" id="shift" /> Shift</label>
+    <label>key <input type="text" id="key" maxlength="1" /></label>
+    <div class="note">tmux default is Ctrl-b. Ctrl-a is the other common choice.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>behavior</legend>
+    <label>command-mode timeout (ms)
+      <input type="number" id="timeout" min="500" max="10000" step="250" /></label>
+    <br/><br/>
+    <label><input type="checkbox" id="always" /> always show status bar</label>
+    <div class="note">off = the bar only appears while in command/copy mode.</div>
+  </fieldset>
+
+  <div class="save">
+    <button id="save">save</button><span class="ok" id="ok">saved ✓</span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
