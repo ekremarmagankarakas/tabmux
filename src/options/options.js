@@ -56,6 +56,7 @@ async function load() {
   $('key').value = config.prefix.key;
   $('timeout').value = config.timeoutMs;
   $('always').checked = config.alwaysShowStatus;
+  $('sessionReplace').checked = config.sessionReplaceDefault;
   renderBindings(config.bindings);
   loaded = true;
   $('reset-bindings').disabled = false;
@@ -76,6 +77,7 @@ async function save() {
     },
     timeoutMs: Math.max(500, Math.min(10000, parseInt($('timeout').value, 10) || 2500)),
     alwaysShowStatus: $('always').checked,
+    sessionReplaceDefault: $('sessionReplace').checked,
     bindings: readBindings(),
   };
   saving = true;

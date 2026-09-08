@@ -40,6 +40,7 @@ export async function handle(msg, sender) {
   if (msg.name !== undefined && (typeof msg.name !== 'string' || msg.name.length > 200)) throw new Error('Invalid session name');
   if (msg.title !== undefined && (typeof msg.title !== 'string' || msg.title.length > 200)) throw new Error('Invalid group title');
   if (msg.groupId !== undefined && (!Number.isInteger(msg.groupId) || msg.groupId < 0)) throw new Error('Invalid group');
+  if (msg.replace !== undefined && typeof msg.replace !== 'boolean') throw new Error('Invalid replace flag');
   if (msg.type === 'select-tab' && (!Number.isInteger(msg.index) || msg.index < 1 || msg.index > 9)) throw new Error('Invalid tab index');
   const named = ['new-session','restore-session','delete-session','group-add','group-create'];
   if (named.includes(msg.type) && (typeof msg.name !== 'string' || !msg.name.trim())) throw new Error('A name is required');
@@ -76,11 +77,11 @@ export async function handle(msg, sender) {
     case "select-tab":  return selectTab(tab, msg.index);
     case "last-tab":    return lastTab(tab);
     case "detach":      return detach(tab, msg.name);
-    case "new-session": return newSession(tab, msg.name);
+    case "new-session": return newSession(tab, msg.name, msg.replace);
     case "get-session-name": return getSessionName(tab);
     case "save-session":return saveSession(tab, msg.name);
     case "list-sessions": return listSessions();
-    case "restore-session": return restoreSession(tab, msg.name);
+    case "restore-session": return restoreSession(tab, msg.name, msg.replace);
     case "delete-session":  return deleteSession(msg.name);
     case "group-next":  return cycleGroup(tab, +1);
     case "group-prev":  return cycleGroup(tab, -1);

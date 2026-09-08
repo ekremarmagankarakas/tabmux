@@ -74,6 +74,11 @@
     <br/><br/>
     <label><input type="checkbox" id="always" /> always show status bar</label>
     <div class="note">off = the bar only appears while in command/copy mode.</div>
+    <br/><br/>
+    <label><input type="checkbox" id="sessionReplace" /> new/restore session replaces the current window by default</label>
+    <div class="note">off (tmux-like) = <code>N</code> / <code>prefix s</code> → enter / <code>:session</code> / <code>:restore</code>
+      open in a new window and minimize this one. Either way, shift+enter (or a
+      <code>!</code>, e.g. <code>:restore!</code>) always gets you the other behavior.</div>
   </fieldset>
 
   <fieldset>

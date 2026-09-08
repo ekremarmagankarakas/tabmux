@@ -67,7 +67,7 @@ export function openInput(lead, value, onSubmit, onCancel) {
     e.stopImmediatePropagation();
     if (e.key === 'Tab') { e.preventDefault(); return; }
     if (e.repeat && ['Enter','Escape'].includes(e.key)) { e.preventDefault(); return; }
-    if (e.key === "Enter") { e.preventDefault(); const v = input.value; closeOverlay(); onSubmit(v); }
+    if (e.key === "Enter") { e.preventDefault(); const v = input.value; const shiftKey = e.shiftKey; closeOverlay(); onSubmit(v, shiftKey); }
     else if (e.key === "Escape") { e.preventDefault(); closeOverlay(); onCancel(); }
   }, true);
 }

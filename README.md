@@ -23,24 +23,30 @@ sit contiguously in the strip, though, so restoring can shuffle overall tab
 order slightly to keep each group together; membership and group appearance
 come back exactly as saved regardless.
 
-`prefix N` (or `:session <name>`) is the `tmux new -s <name>` equivalent — it
-**replaces the window you invoked it from** with a fresh blank one named and
-saved immediately, the same way `tmux new` repurposes the terminal you're
-sitting in rather than opening a second one. From then on that window is a
-*live* session: opening/closing/navigating/reordering/pinning tabs in it
-autosaves in the background (debounced ~600ms), same as `:save <name>` on any
-existing window makes it live going forward. `prefix d` (detach) still has
-its own job on top of that: save-then-**close** the window when you're done
-with it for now.
+`prefix N` (or `:session <name>`) is the `tmux new -s <name>` equivalent —
+it starts a fresh, blank, named session — and restoring one (`prefix s` →
+Enter, or `:restore <name>`) both share the same choice of **where the
+session ends up**, **non-destructive by default**: it opens in a brand new
+window and just minimizes the window you invoked it from, leaving that
+window's own tabs untouched underneath. Hold shift — `prefix N`/`prefix s` →
+**Shift+Enter**, or a `!` on the command-prompt verb (`:session!
+<name>`/`:restore! <name>`, tmux/vim-style "force" suffix) — to get the old
+destructive behavior instead: replace the invoking window's tabs in place,
+the way `tmux new`/`tmux attach` repurpose the terminal you're sitting in
+rather than opening a second one. **Options → "new/restore session replaces
+the current window by default"** flips which one plain Enter/the bare verb
+does — shift+enter (or `!`) always gets you the *other* one, whichever way
+the setting is set. Either way, once a window is running a named session,
+opening/closing/navigating/reordering/pinning tabs in it autosaves in the
+background (debounced ~600ms), same as `:save <name>` on any existing window
+makes it live going forward. `prefix d` (detach) still has its own job on top
+of that: save-then-**close** the window when you're done with it for now.
 
-Restoring a session (`prefix s` → Enter, or `:restore <name>`) works the same
-way — **replaces the window you invoked it from** — it opens the session's
-tabs there, then closes whatever was open before, rather than spawning a
-separate window. If that
-session is already open in another window, though, it's an *attach*, not a
-recreate: both `prefix N`/`:session <name>` and restoring switch to the
-window that's already running it instead of spinning up a duplicate — the
-same way `tmux attach` doesn't relaunch a session that's already up. And like
+If the session is already open in another window, though, it's an *attach*,
+not a recreate regardless of which variant you use: both `prefix N`/`:session
+<name>` and restoring switch to the window that's already running it instead
+of spinning up a duplicate — the same way `tmux attach` doesn't relaunch a
+session that's already up. And like
 a tmux session dying when its last pane closes: if you close all of a live
 session's tabs yourself (closing the window, basically) instead of using
 `prefix d`, the saved session is deleted, not left behind as a stale entry.
@@ -141,12 +147,14 @@ S            send tab to group  (same picker · enter files this tab
                                   there · n new group · esc cancel)
 B            break tab out of its group
 
-N            new session  (replaces this window with a fresh session
-                            named <name> and autosaves it as you go)
-s            session picker  (j/k move · enter restore · d delete)
+N            new session  (prompts for <name> · enter open in new window ·
+                            shift+enter replace this window — see options)
+s            session picker  (j/k move · enter open in new window ·
+                               shift+enter replace this window · d delete)
 d            detach: save this window's tabs, then close it
-:            command prompt: session <name> | save [name] | restore <name> |
-                              kill <name> | group <name> | ungroup | new
+:            command prompt: session <name> | session! <name> | save [name] |
+                              restore <name> | restore! <name> | kill <name> |
+                              group <name> | ungroup | new
 
 [            copy/scroll mode
 ?            help overlay
@@ -187,7 +195,7 @@ Two layers, matching what each is actually good at:
   | `basic.spec.js` | `?` help, `c` new tab, options page ↔ live prefix change |
   | `tabs.spec.js` | `x`, `n`/`p`, digit jump, `Tab`/`;` |
 | `tab-groups.spec.js` | `g`/`G`, `t`, `T`, `S`, `B` |
-| `sessions.spec.js` | `N`, `s`, `d`, and the `:` verbs (`save`/`restore`/`kill`/`group`/`ungroup`/`new`) |
+| `sessions.spec.js` | `N`, `s` (Enter/Shift+Enter), `d`, the `sessionReplaceDefault` option, and the `:` verbs (`save`/`session`/`session!`/`restore`/`restore!`/`kill`/`group`/`ungroup`/`new`) |
   | `copy-mode.spec.js` | `[`, scroll keys, `/` search, `q`/Escape |
 
 ```

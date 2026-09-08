@@ -68,9 +68,9 @@ describe("newSession", () => {
     expect(res.error).toMatch(/usage/);
   });
 
-  it("replaces the invoking window's tabs with a fresh blank one and seeds a save", async () => {
+  it("replace:true replaces the invoking window's tabs with a fresh blank one and seeds a save", async () => {
     const { windowId, tabs } = fake.seedWindow([{ url: "https://old.example/" }]);
-    const res = await sessions.newSession({ windowId, id: tabs[0].id, groupId: -1 }, "work");
+    const res = await sessions.newSession({ windowId, id: tabs[0].id, groupId: -1 }, "work", true);
     expect(res.toast).toMatch(/started/);
 
     const liveTabs = await fake.chrome.tabs.query({ windowId });
@@ -78,6 +78,25 @@ describe("newSession", () => {
     expect(liveTabs[0].url).toBe("chrome://newtab/");
     expect(storedSessions().work).toBeTruthy();
     expect(storedSessions().work.tabs).toEqual([]); // blank seed tab, filtered out
+  });
+
+  // Default (no replace flag): same non-destructive default as
+  // restoreSession() — open the fresh session in a new window and minimize
+  // the invoking one, rather than tearing down whatever was already there.
+  it("by default opens the fresh session in a new window and minimizes the invoking one, leaving its tabs untouched", async () => {
+    const { windowId, tabs } = fake.seedWindow([{ url: "https://old.example/" }]);
+    const res = await sessions.newSession({ windowId, id: tabs[0].id, groupId: -1 }, "work");
+    expect(res.toast).toMatch(/started in a new window/);
+
+    const invokingTabs = await fake.chrome.tabs.query({ windowId });
+    expect(invokingTabs.map((t) => t.url)).toEqual(["https://old.example/"]);
+    expect(fake.getWindow(windowId).state).toBe("minimized");
+
+    expect(storedSessions().work).toBeTruthy();
+    expect(storedSessions().work.tabs).toEqual([]); // blank seed tab, filtered out
+    const newWindowTabs = fake.allTabs().filter((t) => t.windowId !== windowId);
+    expect(newWindowTabs).toHaveLength(1);
+    expect(newWindowTabs[0].url).toBe("chrome://newtab/");
   });
 
   // Regression: newSession used to only check the in-memory "live" map, so a
@@ -101,8 +120,11 @@ describe("newSession", () => {
   });
 
   it("switches to an already-live window instead of duplicating it", async () => {
+    // replace:true so "work" ends up owned by `live.windowId` itself, as this
+    // test's assertions assume — the default (open in a new window) would
+    // make a separate window the owner instead, which isn't what's under test.
     const live = fake.seedWindow([{ url: "https://a.example/" }]);
-    await sessions.newSession({ windowId: live.windowId, id: live.tabs[0].id, groupId: -1 }, "work");
+    await sessions.newSession({ windowId: live.windowId, id: live.tabs[0].id, groupId: -1 }, "work", true);
 
     const { windowId, tabs } = fake.seedWindow([{ url: "https://b.example/" }]);
     const res = await sessions.newSession({ windowId, id: tabs[0].id, groupId: -1 }, "work");
@@ -113,11 +135,15 @@ describe("newSession", () => {
     expect(untouched[0].url).toBe("https://b.example/");
   });
 
-  it("flushes a different previous live session on this window before replacing it", async () => {
+  // replace:true — flushing a window's previous live session before
+  // overwriting it is specifically a replace() concern (this window is about
+  // to lose its current tabs in place); the default open() path never
+  // touches this window's tabs at all, so there's nothing to flush.
+  it("replace:true flushes a different previous live session on this window before replacing it", async () => {
     const { windowId, tabs } = fake.seedWindow([{ url: "https://old.example/" }]);
     await sessions.saveSession({ windowId }, "old"); // this window is now live as "old"
 
-    await sessions.newSession({ windowId, id: tabs[0].id, groupId: -1 }, "new");
+    await sessions.newSession({ windowId, id: tabs[0].id, groupId: -1 }, "new", true);
 
     expect(storedSessions().old.tabs[0].url).toBe("https://old.example/");
     expect(storedSessions().new).toBeTruthy();
@@ -131,7 +157,7 @@ describe("restoreSession", () => {
     expect(res.error).toMatch(/empty or missing/);
   });
 
-  it("replaces the invoking window's tabs and reconstructs groups", async () => {
+  it("replace:true replaces the invoking window's tabs and reconstructs groups", async () => {
     const source = fake.seedWindow([
       { url: "https://a.example/" },
       { url: "https://b.example/", pinned: true },
@@ -144,7 +170,7 @@ describe("restoreSession", () => {
     await sessions.detach({ windowId: source.windowId, id: source.tabs[0].id }, "docs-session");
 
     const target = fake.seedWindow([{ url: "https://stale.example/" }]);
-    const res = await sessions.restoreSession({ windowId: target.windowId }, "docs-session");
+    const res = await sessions.restoreSession({ windowId: target.windowId }, "docs-session", true);
     expect(res.toast).toBe('restored "docs-session"');
 
     const liveTabs = await fake.chrome.tabs.query({ windowId: target.windowId });
@@ -163,17 +189,48 @@ describe("restoreSession", () => {
   // rejected by the same "empty or missing" error as a name that never
   // existed at all — leaving an unrestorable, permanently stuck stub
   // (conversation bug_006).
-  it("treats a saved-but-empty session as 'start fresh', not an error", async () => {
+  it("replace:true treats a saved-but-empty session as 'start fresh', not an error", async () => {
     const seedWin = fake.seedWindow([{ url: "https://x.example/" }]);
-    await sessions.newSession({ windowId: seedWin.windowId, id: seedWin.tabs[0].id, groupId: -1 }, "empty-one");
+    // replace:true so seedWin itself (not a new window) ends up owning
+    // "empty-one" — the detach right below needs that to be the case.
+    await sessions.newSession({ windowId: seedWin.windowId, id: seedWin.tabs[0].id, groupId: -1 }, "empty-one", true);
     // detach it (still empty) so it's "on disk, not live" — see comment above
     await sessions.detach({ windowId: seedWin.windowId, id: seedWin.tabs[0].id }, "empty-one");
 
     const target = fake.seedWindow([{ url: "https://stale.example/" }]);
-    const res = await sessions.restoreSession({ windowId: target.windowId }, "empty-one");
+    const res = await sessions.restoreSession({ windowId: target.windowId }, "empty-one", true);
     expect(res.error).toBeUndefined();
     expect(res.toast).toMatch(/starting fresh/);
     expect(await fake.chrome.tabs.query({ windowId: target.windowId })).toHaveLength(1);
+  });
+
+  // Default (no replace flag): open in a brand-new window and minimize the
+  // invoking one, rather than tearing down whatever was already there.
+  it("by default opens the session in a new window and minimizes the invoking one, leaving its tabs untouched", async () => {
+    const source = fake.seedWindow([
+      { url: "https://a.example/" },
+      { url: "https://b.example/", pinned: true },
+    ]);
+    const groupId = fake.addGroup(source.windowId, { title: "docs", color: "red", collapsed: false });
+    await fake.chrome.tabs.group({ tabIds: [source.tabs[0].id], groupId });
+    await sessions.detach({ windowId: source.windowId, id: source.tabs[0].id }, "docs-session");
+
+    const invoking = fake.seedWindow([{ url: "https://stale.example/" }]);
+    const res = await sessions.restoreSession({ windowId: invoking.windowId }, "docs-session");
+    expect(res.toast).toBe('opened "docs-session" in a new window');
+
+    // the invoking window is untouched (still its original tab) but minimized
+    const invokingTabs = await fake.chrome.tabs.query({ windowId: invoking.windowId });
+    expect(invokingTabs.map((t) => t.url)).toEqual(["https://stale.example/"]);
+    expect(fake.getWindow(invoking.windowId).state).toBe("minimized");
+
+    // a separate new window has the session's tabs, pinning, and group
+    const allTabs = fake.allTabs();
+    const newWindowTabs = allTabs.filter((t) => t.windowId !== invoking.windowId);
+    expect(newWindowTabs.map((t) => t.url)).toEqual(["https://a.example/", "https://b.example/"]);
+    expect(newWindowTabs.find((t) => t.url === "https://b.example/").pinned).toBe(true);
+    const restoredGroupId = newWindowTabs.find((t) => t.url === "https://a.example/").groupId;
+    expect(fake.allGroups().find((g) => g.id === restoredGroupId)).toMatchObject({ title: "docs", color: "red" });
   });
 
   it("attaches to an already-live window instead of duplicating", async () => {

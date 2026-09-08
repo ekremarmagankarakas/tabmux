@@ -130,6 +130,61 @@ export function getSessionName(tab) { return serial(() => ({ ok: true, name: nam
 export function getSaveStatus(tab) { return serial(() => ({ ok: true, ...(statuses.get(tab.windowId) || {}), name: names.get(tab.windowId) || null })); }
 export function retrySave(tab) { return operation(tab, () => save(tab, statuses.get(tab.windowId)?.pendingName || names.get(tab.windowId)), () => statuses.get(tab.windowId)?.pendingName); }
 
+// Creates the session's tabs (and reforms its groups) inside window `id`,
+// which already exists — used both by replace() (the invoking window) and
+// open() (a freshly created one). Doesn't touch whatever else is already in
+// that window; the caller decides what (if anything) to remove afterward.
+//
+// Pushes into the caller's own `created` array rather than building and
+// returning a local one and assigning it after the fact — if this throws
+// partway through (e.g. chrome.tabs.group rejecting), the caller's rollback
+// logic still needs to see whatever tabs *did* get created before the
+// failure, not an array that was never assigned because the call never
+// finished.
+async function materialize(id, s, created) {
+  for (const [i, t] of (s.tabs.length ? s.tabs : [{}]).entries()) {
+    const added = await chrome.tabs.create({ windowId: id, ...(t.url ? {url:t.url} : {}), pinned: !!t.pinned, active: i === 0 });
+    created.push(added.id);
+  }
+  for (const g of s.groups || []) {
+    const members = s.tabs.flatMap((t, i) => t.groupId === g.id ? [created[i]] : []);
+    if (!members.length) continue;
+    const groupId = await chrome.tabs.group({ tabIds: members });
+    await chrome.tabGroups.update(groupId, { title:g.title, color:g.color, collapsed:!!g.collapsed });
+  }
+}
+
+// The non-destructive default: open the session in a brand-new window and
+// minimize the one this was invoked from, rather than tearing its tabs down.
+// Nothing about the invoking window is touched beyond that — if it was itself
+// a live session, it keeps autosaving in the background exactly as before;
+// minimizing doesn't suspend a window's tabs. Lower-risk than replace() (it
+// never destroys anything that already existed), so instead of replace()'s
+// full recovery-backup/journal ceremony, a failure here just tears down the
+// half-built new window and leaves the invoking window untouched (in
+// particular, never minimized on a failure path).
+// `fresh` mirrors replace()'s meaning: `s` isn't a session that already
+// exists in storage (newSession's blank starting point), so it needs to be
+// written before anything else can reference it by name — same as replace(),
+// just with nothing existing to tear down afterward.
+async function open(tab, name, s, fresh) {
+  const win = await chrome.windows.create({});
+  const seedTabId = win.tabs?.[0]?.id;
+  const created = [];
+  try {
+    await materialize(win.id, s, created);
+    if (seedTabId != null) await chrome.tabs.remove(seedTabId).catch(() => {});
+    if (fresh) await write(name, s);
+    await track(win.id, name);
+    await status(win.id);
+  } catch (e) {
+    await chrome.windows.remove(win.id).catch(() => {});
+    throw e;
+  }
+  try { await chrome.windows.update(tab.windowId, { state: 'minimized' }); } catch {}
+  return { ok: true, toast: fresh ? `session "${name}" started in a new window — autosaving as you go` : s.tabs.length ? `opened "${name}" in a new window` : `"${name}" is empty — opened a new window` };
+}
+
 async function replace(tab, name, s, fresh) {
   const id = tab.windowId;
   const previous = names.get(id);
@@ -149,16 +204,7 @@ async function replace(tab, name, s, fresh) {
     await journal(id, true);
     const old = await orderedTabs(id);
     originalActive = old.find(t => t.active)?.id;
-    for (const [i, t] of (s.tabs.length ? s.tabs : [{}]).entries()) {
-      const added = await chrome.tabs.create({ windowId: id, ...(t.url ? {url:t.url} : {}), pinned: !!t.pinned, active: i === 0 });
-      created.push(added.id);
-    }
-    for (const g of s.groups || []) {
-      const members = s.tabs.flatMap((t, i) => t.groupId === g.id ? [created[i]] : []);
-      if (!members.length) continue;
-      const groupId = await chrome.tabs.group({ tabIds: members });
-      await chrome.tabGroups.update(groupId, { title:g.title, color:g.color, collapsed:!!g.collapsed });
-    }
+    await materialize(id, s, created);
     if (fresh) await write(name, s);
     // Persist the new owner before destructive work; failure leaves originals open.
     await track(id, name);
@@ -188,7 +234,10 @@ async function replace(tab, name, s, fresh) {
     throw new Error(`${e.message}${backedUp ? '. Original window snapshot is available in Recovery.' : '. Original tabs were kept open.'}`);
   } finally { transitioning.delete(id); cancel(id); }
 }
-export function newSession(tab, name) {
+// Default: open the fresh session in a new window, minimize this one — same
+// non-destructive default as restoreSession(). `replaceInPlace` opts into the
+// old behavior (this window becomes the session).
+export function newSession(tab, name, replaceInPlace) {
   return operation(tab, async () => {
     if (!name) return { error: 'usage: session <name>' };
     name = validName(name);
@@ -198,10 +247,15 @@ export function newSession(tab, name) {
       return { ok:true, toast:`session "${name}" already running — switched to it` };
     }
     if (Object.hasOwn(await read(), name)) return { error:`session "${name}" already saved — use :restore ${name} or :kill ${name} first` };
-    return replace(tab, name, { version:1, savedAt:Date.now(), tabs:[], groups:[] }, true);
+    const s = { version:1, savedAt:Date.now(), tabs:[], groups:[] };
+    return replaceInPlace ? replace(tab, name, s, true) : open(tab, name, s, true);
   });
 }
-export function restoreSession(tab, name) {
+// Default: open in a new window, minimize this one — nothing existing is
+// ever destroyed. `replaceInPlace` is the explicit opt-in for the old
+// behavior (this window becomes the session). Either way, a session that's
+// already open elsewhere is always just focused, never duplicated.
+export function restoreSession(tab, name, replaceInPlace) {
   return operation(tab, async () => {
     const all = await read();
     if (!Object.hasOwn(all, name)) return { error:'empty or missing session' };
@@ -211,7 +265,7 @@ export function restoreSession(tab, name) {
       await chrome.windows.update(existing, { focused:true });
       return { ok:true, toast:`"${name}" already open — switched to it` };
     }
-    return replace(tab, name, s, false);
+    return replaceInPlace ? replace(tab, name, s, false) : open(tab, name, s, false);
   });
 }
 export function detach(tab, name) {

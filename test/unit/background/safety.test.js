@@ -29,7 +29,10 @@ it('keeps original tabs when storage fails before replacement', async () => {
   const w = fake.seedWindow([{url:'https://original.example'}]);
   await sessions.saveSession(tab(w),'old');
   vi.spyOn(chrome.storage.local,'set').mockRejectedValue(new Error('disk full'));
-  await expect(sessions.newSession(tab(w),'new')).rejects.toThrow(/disk full/);
+  // replace:true — this test is specifically about replace()'s rollback
+  // keeping the original tab alive when storage fails; the default (open in
+  // a new window) never touches w's own tab, so there'd be nothing to keep.
+  await expect(sessions.newSession(tab(w),'new',true)).rejects.toThrow(/disk full/);
   expect(fake.getTab(tab(w).id)).toBeTruthy();
   expect((await sessions.getSaveStatus(tab(w))).error).toMatch(/disk full/);
 });
@@ -39,7 +42,10 @@ it('keeps originals and rolls back created tabs when group restoration fails', a
   await sessions.detach(tab(source),'saved');
   const w = fake.seedWindow([{url:'https://original.example'}]);
   vi.spyOn(chrome.tabs,'group').mockRejectedValue(new Error('group failed'));
-  await expect(sessions.restoreSession(tab(w),'saved')).rejects.toThrow(/group failed/);
+  // replace:true — this test is specifically about replace()'s rollback/
+  // recovery guarantees, which the default (open in a new window, minimize
+  // this one) doesn't need: it never touches this window's existing tabs.
+  await expect(sessions.restoreSession(tab(w),'saved',true)).rejects.toThrow(/group failed/);
   expect(await chrome.tabs.query({windowId:w.windowId})).toEqual([tab(w)]);
   expect((await sessions.listRecovery()).recoveries).toHaveLength(1);
 });
@@ -51,7 +57,10 @@ it('suppresses autosave throughout a slow restore', async () => {
   vi.spyOn(chrome.tabs,'create').mockImplementation(async props => {
     const created = await create(props); await vi.advanceTimersByTimeAsync(1000); return created;
   });
-  await sessions.restoreSession(tab(w),'saved');
+  // replace:true — this is specifically about suppressing autosave while w's
+  // own tabs are being torn down and rebuilt in place; the default (open in
+  // a new window) never touches w's tabs, so there'd be nothing to suppress.
+  await sessions.restoreSession(tab(w),'saved',true);
   await vi.advanceTimersByTimeAsync(1000);
   expect(stored().old.tabs.map(t=>t.url)).toEqual(['https://original.example']);
   expect(stored().saved.tabs.map(t=>t.url)).toEqual(['https://saved.example']);
@@ -90,7 +99,10 @@ it('rejects malformed stored data before touching a window', async () => {
   expect(fake.getTab(tab(w).id)).toBeTruthy();
 });
 it('can restore the durable recovery of an unnamed window', async () => {
-  const w = fake.seedWindow([{url:'https://original.example'}]); await sessions.newSession(tab(w),'fresh');
+  // replace:true — durable recovery snapshots are a replace() concern (this
+  // window's tabs are about to be destroyed in place); open()'s default never
+  // destroys anything, so it never has a recovery snapshot to write.
+  const w = fake.seedWindow([{url:'https://original.example'}]); await sessions.newSession(tab(w),'fresh',true);
   const recovery = (await sessions.listRecovery()).recoveries[0];
   await sessions.restoreRecovery({windowId:w.windowId},recovery.id);
   expect((await chrome.tabs.query({windowId:w.windowId}))[0].url).toBe('https://original.example');
@@ -124,7 +136,8 @@ it('quarantines a window when rollback itself fails', async () => {
   const w = fake.seedWindow(); await sessions.saveSession(tab(w),'old');
   vi.spyOn(chrome.tabs,'group').mockRejectedValue(new Error('group failed'));
   vi.spyOn(chrome.tabs,'remove').mockRejectedValue(new Error('rollback failed'));
-  await expect(sessions.restoreSession(tab(w),'saved')).rejects.toThrow(/Recovery/);
+  // replace:true — see comment on the previous test.
+  await expect(sessions.restoreSession(tab(w),'saved',true)).rejects.toThrow(/Recovery/);
   expect((await sessions.getSessionName(tab(w))).name).toBeNull();
   expect(fake.storageSessionRaw()['tabmux:transitions']).toContain(w.windowId);
   expect(stored().old.tabs).toHaveLength(1);
