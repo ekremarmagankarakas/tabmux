@@ -5,17 +5,20 @@ import { onKeyDown } from "../../../src/content/mode.js";
 
 function key(props) {
   return {
+    ...props,
+    isTrusted: props.isTrusted ?? true,
     key: props.key,
     ctrlKey: !!props.ctrlKey,
     altKey: !!props.altKey,
     shiftKey: !!props.shiftKey,
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
+    stopImmediatePropagation: vi.fn(),
   };
 }
 
 beforeEach(() => {
-  globalThis.chrome = { runtime: { sendMessage: vi.fn(), lastError: undefined } };
+  globalThis.chrome = { runtime: { sendMessage: vi.fn((_,cb) => cb({ok:true})), lastError: undefined } };
   setMode("normal");
   setActiveOverlay(null);
   Object.assign(config, structuredClone(DEFAULTS), { prefix: { ...DEFAULTS.prefix } });
@@ -91,5 +94,47 @@ describe("command-mode timeout", () => {
     vi.advanceTimersByTime(config.timeoutMs + 10);
     expect(mode).toBe("normal");
     vi.useRealTimers();
+  });
+});
+
+describe('keyboard safety', () => {
+  it('ignores synthetic prefix and command events', () => {
+    onKeyDown(key({key:'b',ctrlKey:true,isTrusted:false}));
+    expect(mode).toBe('normal');
+    onKeyDown(key({key:'b',ctrlKey:true}));
+    onKeyDown(key({key:'x',isTrusted:false}));
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+  it('matches Meta explicitly', () => {
+    onKeyDown(key({key:'b',ctrlKey:true,metaKey:true})); expect(mode).toBe('normal');
+    config.prefix = {key:'b',meta:true};
+    onKeyDown(key({key:'b',metaKey:true})); expect(mode).toBe('command');
+  });
+  it('ignores composition and repeated destructive commands', () => {
+    onKeyDown(key({key:'b',ctrlKey:true,isComposing:true})); expect(mode).toBe('normal');
+    onKeyDown(key({key:'b',ctrlKey:true}));
+    onKeyDown(key({key:'x',repeat:true}));
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('custom command bindings', () => {
+  it('dispatches a new binding and stops recognizing the old key', () => {
+    config.bindings['new-tab'] = ['o','O'];
+    onKeyDown(key({key:'b',ctrlKey:true})); onKeyDown(key({key:'c'}));
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    onKeyDown(key({key:'b',ctrlKey:true})); onKeyDown(key({key:'O',shiftKey:true}));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({type:'new-tab'},expect.any(Function));
+  });
+  it('remaps tab jumps through the same dispatcher', () => {
+    config.bindings['select-tab-1'] = ['z'];
+    onKeyDown(key({key:'b',ctrlKey:true})); onKeyDown(key({key:'z'}));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({type:'select-tab',index:1},expect.any(Function));
+  });
+  it('does not dispatch unbound commands or modified digit keys', () => {
+    config.bindings['close-tab'] = [];
+    onKeyDown(key({key:'b',ctrlKey:true})); onKeyDown(key({key:'x'}));
+    onKeyDown(key({key:'b',ctrlKey:true})); onKeyDown(key({key:'1',metaKey:true}));
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
   });
 });

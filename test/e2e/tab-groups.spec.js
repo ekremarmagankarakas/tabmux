@@ -100,3 +100,18 @@ test("B breaks the current tab out of its group", async ({ context, baseUrl, ser
 
   await expect.poll(async () => (await tabByUrl(serviceWorker, `${baseUrl}?a`))?.groupId).toBe(TAB_GROUP_ID_NONE);
 });
+
+test('T prompts for a new group name and groups the current tab', async ({context,baseUrl,serviceWorker}) => {
+  const page = await context.newPage(); await page.goto(baseUrl);
+  await page.keyboard.press('Control+b'); await page.keyboard.press('T');
+  await expect(page.getByRole('textbox',{name:'new group:'})).toBeVisible();
+  await page.getByRole('textbox',{name:'new group:'}).fill('research');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => {
+    return serviceWorker.evaluate(async () => {
+      const groups = await chrome.tabGroups.query({title:'research'});
+      if (!groups.length) return [];
+      return (await chrome.tabs.query({groupId:groups[0].id})).map(tab => tab.url);
+    });
+  }).toEqual([baseUrl]);
+});

@@ -16,6 +16,8 @@ test("prefix + ? opens the help overlay", async ({ context, baseUrl }) => {
   // selector — Playwright's piercing selector engine crosses shadow
   // boundaries for text/role queries automatically.
   await expect(page.getByText("tabmux — keybindings")).toBeVisible();
+  await expect(page.locator('#tabmux-host .k').filter({ hasText: /^C-b 1–9$/ })).toHaveCount(1);
+  await expect(page.locator('#tabmux-host .k').filter({ hasText: /^C-b [1-9]$/ })).toHaveCount(0);
 
   await page.keyboard.press("Escape");
   await expect(page.getByText("tabmux — keybindings")).toBeHidden();

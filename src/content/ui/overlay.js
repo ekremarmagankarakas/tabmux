@@ -7,6 +7,7 @@
 // would stop the event before it ever reaches the <input> inside the shadow
 // root — the input's own listener would never fire, silently swallowing
 // Enter/Escape and leaving the overlay unclosable.
+import { trustedKey, focusedElement } from '../input.js';
 import { config } from "../config.js";
 import { activeOverlay, setActiveOverlay, setMode } from "../state.js";
 import { escapeHtml } from "../utils.js";
@@ -21,19 +22,30 @@ export function openOverlay(el, onKey) {
   // point at the second — replace it outright.
   if (activeOverlay) closeOverlay();
   ui().appendChild(el);
-  const overlay = { el };
+  el.setAttribute('role', el.querySelector('.row') ? 'listbox' : 'dialog');
+  el.setAttribute('aria-label', el.querySelector('h2')?.textContent || 'tabmux command');
+  el.tabIndex = -1;
+  const overlay = { el, previousFocus: focusedElement() };
   if (onKey) {
-    overlay.handler = (e) => { e.stopPropagation(); onKey(e); };
+    overlay.handler = (e) => {
+      if (!trustedKey(e)) return;
+      e.stopImmediatePropagation();
+      if (e.repeat && !['j','k','ArrowDown','ArrowUp'].includes(e.key)) { e.preventDefault(); return; }
+      Promise.resolve(onKey(e)).catch(console.error);
+    };
     document.addEventListener("keydown", overlay.handler, true);
   }
   setActiveOverlay(overlay);
+  if (onKey) el.focus();
 }
 
-export function closeOverlay() {
+export function closeOverlay(restoreFocus = true) {
   if (!activeOverlay) return;
   if (activeOverlay.handler) document.removeEventListener("keydown", activeOverlay.handler, true);
+  const previousFocus = activeOverlay.previousFocus;
   activeOverlay.el.remove();
   setActiveOverlay(null);
+  if (restoreFocus && previousFocus?.isConnected) previousFocus.focus();
   setMode("normal");
   if (config.alwaysShowStatus) showStatus(idleStatus());
   else hideStatus();
@@ -45,13 +57,31 @@ export function openInput(lead, value, onSubmit, onCancel) {
   el.innerHTML = `<span class="lead">${escapeHtml(lead)}</span>`;
   const input = document.createElement("input");
   input.value = value;
+  input.setAttribute("aria-label", lead);
   el.appendChild(input);
   openOverlay(el); // no onKey — the <input> below handles its own keys
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
   input.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Enter") { const v = input.value; closeOverlay(); onSubmit(v); }
-    else if (e.key === "Escape") { closeOverlay(); onCancel(); }
+    if (!trustedKey(e)) return;
+    e.stopImmediatePropagation();
+    if (e.key === 'Tab') { e.preventDefault(); return; }
+    if (e.repeat && ['Enter','Escape'].includes(e.key)) { e.preventDefault(); return; }
+    if (e.key === "Enter") { e.preventDefault(); const v = input.value; closeOverlay(); onSubmit(v); }
+    else if (e.key === "Escape") { e.preventDefault(); closeOverlay(); onCancel(); }
   }, true);
+}
+
+let listId = 0;
+export function scrollSelection(el) {
+  if (!el.id) el.id = `tabmux-list-${++listId}`;
+  for (const [i,row] of [...el.querySelectorAll('.row')].entries()) {
+    row.id = `${el.id}-${i}`;
+    row.setAttribute('role','option');
+    row.setAttribute('aria-selected', String(row.classList.contains('sel')));
+  }
+  const selected = el.querySelector('.sel');
+  if (selected) el.setAttribute('aria-activedescendant',selected.id);
+  else el.removeAttribute('aria-activedescendant');
+  el.querySelector('.sel')?.scrollIntoView?.({ block:'nearest' });
 }

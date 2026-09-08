@@ -74,9 +74,54 @@ After changing anything under `src/`: re-run `npm run build` (or leave
 `npm run watch` running), then hit the reload icon (⟳) for tabmux on
 `chrome://extensions`, and refresh any tab you're testing in.
 
-To change the prefix (e.g. to Ctrl-a): right-click the extension → **Options**.
+Click the toolbar icon to open the **session picker**, including on New Tab,
+`chrome://` pages, and other pages where the prefix cannot run. The default browser
+shortcut is **Ctrl+Shift+Y** (**Command+Shift+Y** on macOS). Change it at
+`chrome://extensions/shortcuts` if another extension already uses it.
+
+The picker supports filtering, arrow-key navigation, saving the current window,
+starting a session, and restoring sessions and recovery snapshots. Its compact
+tmux appearance matches the in-page controls.
+
+To change the prefix (including Meta/Command): use the picker's **options** button
+or right-click the extension → **Options**.
+
+## Session safety and failures
+
+Session operations run in order, including ownership checks and autosave. A name
+can belong to only one live window. New and restore first save the source window
+and a durable recovery snapshot; replacement tabs and groups are prepared before
+original tabs close. A failed preparation keeps the original tabs open. If a
+switch is interrupted or partially fails, automatic saving is suspended for that
+window so partial state cannot overwrite either saved session. Open the toolbar
+picker and choose a saved session or **recovery snapshots** to recover.
+
+Recovery keeps the latest replaced snapshot per source window. It stores URLs,
+pins, and group metadata, not page contents, form edits, or browser history.
+Storage failures show a persistent **Not saved** message and a toolbar `!` badge.
+Use **retry save** after resolving the failure. An unnamed window needs a name
+before it can be saved; interrupted switches are recovered through the picker.
+
+Saved session data is local to this Chrome profile. Only trusted extension pages
+and the background worker can directly read the storage area; content scripts
+receive configuration and command responses through validated messages.
+The extension sends no telemetry or session data to a server.
 
 ## Keybindings
+
+These are the default bindings. In **Options → commands after prefix**, change the
+primary key or add an alternate for any command, including individual tab jumps.
+Use one character (case-sensitive), or a named key such as `Tab`, `Space`,
+`ArrowLeft`, or `Home`. Clear both fields to unbind a command. Duplicate keys and
+reserved cancel keys are rejected before saving. **Reset command keys** restores
+the defaults without changing your prefix or other settings; click **save** to apply.
+
+Saved changes apply to already-open pages. The help overlay and status hints show
+your current bindings. Default tab jumps appear together as `1–9` in help; custom
+tab jumps appear individually. Saved bindings are preserved when defaults change;
+use **Reset command keys** to adopt the latest defaults. `Escape`, `Enter`, and `Ctrl+C` always cancel command mode;
+keys inside copy mode and pickers are unchanged. The browser-level picker shortcut
+has its own **open Chrome shortcut settings** button in Options.
 
 Press the prefix, then:
 
@@ -89,13 +134,14 @@ n / p        next / previous tab
 Tab  or  ;   last tab
 
 g / G        next / previous tab group
+T            new tab group (prompt for a name; groups the current tab)
 t            tab group picker  (j/k move · enter jump · a add tab ·
                                  n new · r rename · c collapse · x close)
 S            send tab to group  (same picker · enter files this tab
                                   there · n new group · esc cancel)
 B            break tab out of its group
 
-N            new session  (tmux `new -s <name>`: opens a fresh window
+N            new session  (replaces this window with a fresh session
                             named <name> and autosaves it as you go)
 s            session picker  (j/k move · enter restore · d delete)
 d            detach: save this window's tabs, then close it
@@ -107,7 +153,11 @@ d            detach: save this window's tabs, then close it
 ```
 
 Copy mode: `j k` line, `d u` half-page, `space b` page, `g G` top/bottom,
-`/` search, `n` next match, `q`/`Esc` exit.
+`/` search, `n` next match, `q`/`Esc` exit. Click a scrolling panel or focus an element inside it before entering copy mode
+to scroll that panel. Otherwise it scrolls the
+page. Switching tabs or moving focus away resets transient modes. Meta modifiers
+are matched explicitly; composition input and synthetic keyboard events do not
+execute commands, and held keys cannot repeat destructive actions.
 
 ## Testing
 
@@ -136,8 +186,8 @@ Two layers, matching what each is actually good at:
   |---|---|
   | `basic.spec.js` | `?` help, `c` new tab, options page ↔ live prefix change |
   | `tabs.spec.js` | `x`, `n`/`p`, digit jump, `Tab`/`;` |
-  | `tab-groups.spec.js` | `g`/`G`, `t`, `S`, `B` |
-  | `sessions.spec.js` | `N`, `s`, `d`, and the `:` verbs (`save`/`restore`/`kill`/`group`/`ungroup`/`new`) |
+| `tab-groups.spec.js` | `g`/`G`, `t`, `T`, `S`, `B` |
+| `sessions.spec.js` | `N`, `s`, `d`, and the `:` verbs (`save`/`restore`/`kill`/`group`/`ungroup`/`new`) |
   | `copy-mode.spec.js` | `[`, scroll keys, `/` search, `q`/Escape |
 
 ```
@@ -182,7 +232,7 @@ adding more:
 
 - **Won't run on `chrome://` pages, the Web Store, or the New Tab Page.** Chrome
   forbids content scripts there, so the prefix does nothing on those pages.
-  Switch to a normal page first.
+  Use the toolbar picker or its browser shortcut instead.
 - The prefix is captured in capture phase and should win on most pages, but a
   site with an aggressive same-chord handler could still interfere. Remap the
   prefix in Options if a site fights you.
@@ -203,7 +253,7 @@ src/
 │   ├── mode.js                 prefix/command-mode state machine
 │   ├── keymap.js                the CMDS table (single source of truth) + help
 │   ├── copy-mode.js             vim-ish scroll/search mode
-│   ├── config.js                user settings, synced from chrome.storage
+│   ├── config.js                user settings, updated through background messages
 │   ├── state.js                  shared mode/overlay state
 │   ├── messaging.js               send/sendAsync to the background worker
 │   ├── utils.js                    escapeHtml/div/timeAgo
@@ -233,7 +283,7 @@ test/
     ├── helpers.js              chrome.tabs/tabGroups/storage assertion helpers
     ├── basic.spec.js           ?, c, options page ↔ live prefix
     ├── tabs.spec.js            x, n/p, digit jump, Tab/;
-    ├── tab-groups.spec.js      g/G, t, S, B
+    ├── tab-groups.spec.js      g/G, t, T, N, B
     ├── sessions.spec.js        N, s, d, and the : verbs
     └── copy-mode.spec.js       [, scroll keys, / search, q/Escape
 ```

@@ -11,3 +11,7 @@ export function setMode(m) { mode = m; }
 // for input-owned overlays (see ui/overlay.js).
 export let activeOverlay = null;
 export function setActiveOverlay(o) { activeOverlay = o; }
+
+// Invalidates delayed overlay openers when focus or the current interaction changes.
+export let interaction = 0;
+export function invalidateInteraction() { interaction++; }

@@ -35,6 +35,17 @@ export async function cycleGroup(tab, delta) {
   return { ok: true, toast: `group: ${g.title || "(untitled)"}` };
 }
 
+// A new group always starts with the invoking tab, even if a title is reused.
+export async function createGroup(tab, name) {
+  if (typeof name !== 'string' || !name.trim()) return { error: 'Enter a group name' };
+  const groups = await chrome.tabGroups.query({ windowId: tab.windowId });
+  const groupId = await chrome.tabs.group({ tabIds: [tab.id] });
+  await chrome.tabGroups.update(groupId, {
+    title: name.trim(), color: GROUP_COLORS[groups.length % GROUP_COLORS.length],
+  });
+  return { ok: true, toast: `created group: ${name.trim()}` };
+}
+
 export async function addToGroupByName(tab, name) {
   if (!name) return { error: "usage: group <name>" };
   const groups = await chrome.tabGroups.query({ windowId: tab.windowId });
@@ -63,13 +74,11 @@ export async function listGroups(tab) {
   const groups = await chrome.tabGroups.query({ windowId: tab.windowId });
   const ordered = await orderedGroups(tab.windowId);
   const byId = new Map(groups.map((g) => [g.id, g]));
-  const rows = await Promise.all(
-    ordered.map(async (id) => {
-      const g = byId.get(id);
-      const tabs = await chrome.tabs.query({ windowId: tab.windowId, groupId: id });
-      return { id: g.id, title: g.title, color: g.color, collapsed: g.collapsed, count: tabs.length };
-    })
-  );
+  const tabs = await orderedTabs(tab.windowId);
+  const rows = ordered.filter(id => byId.has(id)).map(id => {
+    const g = byId.get(id);
+    return { id:g.id, title:g.title, color:g.color, collapsed:g.collapsed, count:tabs.filter(t => t.groupId === id).length };
+  });
   return { ok: true, groups: rows, currentGroupId: tab.groupId };
 }
 

@@ -1,12 +1,13 @@
 // The prefix-chord / command-mode state machine: recognizes the prefix,
 // dispatches the following key through CMDS, and hands off to copy-mode when
 // active. This is the top-level keydown entry point, wired up in main.js.
+import { trustedKey } from './input.js';
+import { closeOverlay } from './ui/overlay.js';
 import { config } from "./config.js";
-import { mode, activeOverlay, setMode } from "./state.js";
-import { showStatus, hideStatus, idleStatus } from "./ui/status.js";
-import { send } from "./messaging.js";
-import { CMDS } from "./keymap.js";
-import { handleCopyKey } from "./copy-mode.js";
+import { mode, activeOverlay, setMode, invalidateInteraction } from "./state.js";
+import { showStatus, hideStatus, idleStatus, commandStatus } from "./ui/status.js";
+import { resolveCommand } from "./keymap.js";
+import { handleCopyKey, resetCopyTarget } from "./copy-mode.js";
 
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph"]);
 
@@ -14,6 +15,7 @@ let cmdTimer = null;
 
 function matchesPrefix(e) {
   return (
+    !!e.metaKey === !!config.prefix.meta &&
     !!e.ctrlKey === !!config.prefix.ctrl &&
     !!e.altKey === !!config.prefix.alt &&
     !!e.shiftKey === !!config.prefix.shift &&
@@ -22,23 +24,30 @@ function matchesPrefix(e) {
 }
 
 export function onKeyDown(e) {
+  if (!trustedKey(e)) return;
+  if (e.repeat && mode !== 'copy') {
+    if (mode === 'command' || matchesPrefix(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    return;
+  }
   if (activeOverlay) return; // overlay owns its input
   if (mode === "command") return handleCommandKey(e);
   if (mode === "copy") return handleCopyKey(e);
   if (matchesPrefix(e)) {
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     enterCommand();
   }
 }
 
 function enterCommand() {
+  invalidateInteraction();
   setMode("command");
-  showStatus("PREFIX  ·  c n p x  g G t S B  N s d :  [  ?");
+  showStatus(commandStatus());
   resetTimer();
 }
 
 function exitCommand() {
+  invalidateInteraction();
   setMode("normal");
   clearTimeout(cmdTimer);
   if (config.alwaysShowStatus) showStatus(idleStatus());
@@ -50,27 +59,32 @@ function resetTimer() {
   cmdTimer = setTimeout(exitCommand, config.timeoutMs);
 }
 
+export function resetTransientMode() {
+  invalidateInteraction();
+  resetCopyTarget();
+  closeOverlay(false);
+  exitCommand();
+}
+
 function handleCommandKey(e) {
   if (MODIFIER_KEYS.has(e.key)) {
     // A bare modifier keydown, e.g. Shift on its way down to type `G`.
     // Don't treat it as "unknown command" — just keep waiting for the real key.
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     resetTimer();
     return;
   }
   e.preventDefault();
-  e.stopPropagation();
+  e.stopImmediatePropagation();
   if (e.key === "Escape" || e.key === "Enter" || (e.ctrlKey && e.key === "c")) {
     return exitCommand();
   }
-  if (/^[1-9]$/.test(e.key)) {
-    send({ type: "select-tab", index: parseInt(e.key, 10) });
-    return exitCommand();
-  }
-  const entry = CMDS[e.key];
+  if (e.metaKey || e.altKey || e.ctrlKey) return exitCommand();
+  const entry = resolveCommand(e.key);
   if (entry) {
-    entry.run();
+    const result = entry.run();
+    if (result?.catch) result.catch(() => resetTransientMode());
     if (entry.stays) clearTimeout(cmdTimer);
     else exitCommand();
   } else {

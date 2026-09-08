@@ -112,6 +112,6 @@ describe("lastTab (recent-tab tracking)", () => {
   it("does nothing (but doesn't throw) with no history", async () => {
     const { windowId, tabs } = fake.seedWindow([{ active: true }]);
     const res = await tabsModule.lastTab({ id: tabs[0].id, windowId });
-    expect(res.toast).toBe("last tab");
+    expect(res.toast).toBe("no previous tab");
   });
 });

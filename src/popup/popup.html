@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>tabmux sessions</title>
+<style>
+:root { color-scheme:dark; --bg:#1C1C1D; --fg:#E4E4E5; --muted:#aaa; --border:#49494b; }
+* { box-sizing:border-box; }
+body { width:380px; margin:0; padding:16px; background:var(--bg); color:var(--fg); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px; }
+h1,h2 { margin:0; font-size:13px; font-weight:600; }
+h2 { margin-top:18px; margin-bottom:8px; }
+p { color:var(--muted); margin:8px 0; }
+button,input { font:inherit; color:inherit; background:transparent; border:1px solid var(--border); border-radius:3px; padding:6px 8px; }
+button { cursor:pointer; } button:hover { background:#303033; } button:disabled { opacity:.5; cursor:wait; }
+:focus-visible { outline:2px solid var(--fg); outline-offset:2px; }
+input { width:100%; } label { display:block; margin:12px 0 5px; }
+.actions { display:flex; gap:8px; margin-top:8px; }
+.primary { background:var(--fg); color:var(--bg); } .primary:hover { background:#ccc; }
+#sessions,#recoveries { display:grid; gap:4px; max-height:240px; overflow-y:auto; padding:2px; }
+.session { display:flex; justify-content:space-between; text-align:left; gap:12px; border:0; border-bottom:1px solid var(--border); border-radius:0; }
+.session span:first-child { overflow-wrap:anywhere; min-width:0; } .meta { color:var(--muted); white-space:nowrap; }
+#failure { border:1px solid var(--fg); padding:10px; margin-bottom:12px; } #failure p { color:var(--fg); overflow-wrap:anywhere; }
+[hidden] { display:none !important; } footer { border-top:1px solid var(--border); margin-top:16px; padding-top:10px; font-size:11px; color:var(--muted); }
+#notice { overflow-wrap:anywhere; }
+</style>
+<body>
+<header><h1>tabmux / sessions</h1><button id="options" aria-label="Open options">options</button></header>
+<section id="failure" hidden role="alert"><strong>Not saved</strong><p id="error"></p><button id="retry">retry save</button></section>
+<p id="current">Loading window…</p>
+<label for="filter">find session</label><input id="filter" type="search" placeholder="type to filter" autofocus>
+<h2>saved sessions</h2><div id="sessions" aria-label="Saved sessions"></div>
+<label for="name">session name</label><input id="name" maxlength="200" placeholder="work">
+<div class="actions"><button class="primary" id="save">save window</button><button id="new">new session</button></div>
+<p>Opening a saved session replaces this window. Its previous tabs remain in recovery.</p>
+<details id="recovery"><summary>recovery snapshots</summary><div id="recoveries"></div></details>
+<p id="notice" role="status" aria-live="polite"></p>
+<footer id="shortcut">Open this picker from any tab with the browser shortcut.</footer>
+<script src="popup.js"></script>
+</body>
+</html>

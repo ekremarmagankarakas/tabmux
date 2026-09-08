@@ -1,45 +1,35 @@
-// Talking to the background service worker, which does all the actual
-// chrome.tabs / chrome.tabGroups / chrome.windows / chrome.storage work.
-import { flash } from "./ui/status.js";
-
-// Once the extension is reloaded/updated, any tab that was already open is
-// still running this old content script instance, whose connection back to
-// the extension is dead. chrome.runtime.sendMessage throws synchronously in
-// that case (not via the usual chrome.runtime.lastError callback path), so
-// it has to be try/caught rather than just checked for after the fact.
-// There's nothing to recover — only a page refresh fetches the current
-// script — so just say so once and stop trying.
-let contextInvalidated = false;
-
-function warnInvalidatedOnce() {
-  if (contextInvalidated) return;
-  contextInvalidated = true;
-  flash("⚠ tabmux was updated — refresh this page");
-}
-
-// Fire-and-forget: shows a toast for the response's toast/error, if any.
-export function send(msg) {
-  if (contextInvalidated) return;
-  try {
-    chrome.runtime.sendMessage(msg, (res) => {
-      if (chrome.runtime.lastError) return;
-      if (res && res.error) flash("⚠ " + res.error);
-      else if (res && res.toast) flash(res.toast);
-    });
-  } catch (_) {
-    warnInvalidatedOnce();
-  }
-}
-
-// Awaitable variant for callers that need the response payload (pickers).
+import { flash, showFailure, clearFailure } from './ui/status.js';
+let invalidated = false;
 export function sendAsync(msg) {
-  if (contextInvalidated) return Promise.resolve({});
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
+    if (invalidated) { resolve({ error:'tabmux was updated — refresh this page' }); return; }
+    let finished = false;
+    const finish = res => {
+      if (finished) return;
+      finished = true; clearTimeout(timer);
+      const result = res || { error:'No response from tabmux' };
+      if (result.error) showFailure(result.error, ['save-session','retry-save','get-save-status','get-config','list-sessions','list-groups'].includes(msg.type) ? () => send(msg) : undefined);
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish({ error:'tabmux did not respond. Open the toolbar picker to check the result before retrying.' }), 30000);
     try {
-      chrome.runtime.sendMessage(msg, (res) => resolve(chrome.runtime.lastError ? {} : res));
-    } catch (_) {
-      warnInvalidatedOnce();
-      resolve({});
+      chrome.runtime.sendMessage(msg, res => finish(chrome.runtime.lastError ? {error:chrome.runtime.lastError.message} : res));
+    } catch (error) {
+      invalidated = /context invalidated/i.test(error.message);
+      finish({error:invalidated ? 'tabmux was updated — refresh this page' : error.message});
     }
   });
+}
+export function send(msg) {
+  return sendAsync(msg).then(res => { if (!res.error && res.toast) flash(res.toast); return res; });
+}
+export function displaySaveStatus(value) {
+  if (value.error) showFailure(`Not saved: ${value.error}`, value.name || value.pendingName ? () => send({type:'retry-save'}) : undefined);
+  else clearFailure();
+}
+export function initSaveStatus() {
+  chrome.runtime.onMessage.addListener((msg, sender) => {
+    if (sender.id === chrome.runtime.id && msg.type === 'save-status') displaySaveStatus(msg);
+  });
+  sendAsync({type:'get-save-status'}).then(value => { if (value.status?.error) displaySaveStatus(value.status); });
 }

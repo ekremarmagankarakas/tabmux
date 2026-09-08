@@ -17,7 +17,8 @@ const watch = process.argv.includes("--watch");
 const entryPoints = [
   { in: path.join(SRC, "background", "index.js"), out: "background" },
   { in: path.join(SRC, "content", "main.js"), out: "content" },
-  { in: path.join(SRC, "options", "options.js"), out: "options" }
+  { in: path.join(SRC, "options", "options.js"), out: "options" },
+  { in: path.join(SRC, "popup", "popup.js"), out: "popup" }
 ];
 
 const buildOptions = {
@@ -33,6 +34,8 @@ async function copyStatic() {
   await fs.mkdir(DIST, { recursive: true });
   await fs.copyFile(path.join(SRC, "manifest.json"), path.join(DIST, "manifest.json"));
   await fs.copyFile(path.join(SRC, "options", "options.html"), path.join(DIST, "options.html"));
+
+  await fs.copyFile(path.join(SRC, "popup", "popup.html"), path.join(DIST, "popup.html"));
 
   const iconsOut = path.join(DIST, "icons");
   await fs.mkdir(iconsOut, { recursive: true });

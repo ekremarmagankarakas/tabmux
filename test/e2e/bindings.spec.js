@@ -1,0 +1,55 @@
+import { test, expect } from './fixtures.js';
+
+test('custom command keys apply to an existing page and appear in help', async ({context,extensionId,baseUrl}) => {
+  const page = await context.newPage(); await page.goto(baseUrl);
+  const options = await context.newPage(); await options.goto(`chrome-extension://${extensionId}/options.html`);
+  await options.getByLabel('new tab primary key',{exact:true}).fill('o');
+  await options.getByLabel('new tab alternate key',{exact:true}).fill('O');
+  await options.getByLabel('help primary key',{exact:true}).fill('h');
+  await options.locator('#always').check();
+  await options.getByRole('button',{name:'save',exact:true}).click();
+  await expect(options.locator('#ok')).toHaveText('saved ✓');
+  await expect(page.locator('#tabmux-host .bar')).toContainText('h for keys');
+  await page.keyboard.press('Control+b'); await page.keyboard.press('h');
+  await expect(page.getByText('tabmux — keybindings')).toBeVisible();
+  await expect(page.locator('#tabmux-host .grid')).toContainText('C-b o / C-b O');
+  await page.keyboard.press('Escape');
+  const before = context.pages().length;
+  await page.keyboard.press('Control+b'); await page.keyboard.press('c');
+  await page.keyboard.press('Control+b'); await page.keyboard.press('h');
+  await expect(page.getByText('tabmux — keybindings')).toBeVisible();
+  expect(context.pages().length).toBe(before);
+  await page.keyboard.press('Escape');
+  const opened = context.waitForEvent('page');
+  await page.keyboard.press('Control+b'); await page.keyboard.press('O');
+  const created = await opened; await created.close();
+  await options.reload();
+  await expect(options.getByLabel('new tab primary key',{exact:true})).toHaveValue('o');
+  await expect(options.getByLabel('new tab alternate key',{exact:true})).toHaveValue('O');
+});
+
+test('conflicts block saving and defaults can be restored without changing the prefix', async ({context,extensionId,serviceWorker}) => {
+  const options = await context.newPage(); await options.goto(`chrome-extension://${extensionId}/options.html`);
+  const primary = options.getByLabel('new tab primary key',{exact:true});
+  await primary.fill('n');
+  await expect(options.locator('#binding-error')).toContainText('both new tab and next tab');
+  await expect(options.getByRole('button',{name:'save',exact:true})).toBeDisabled();
+  const stored = await serviceWorker.evaluate(() => chrome.storage.local.get('tabmux:config'));
+  expect(stored['tabmux:config']).toBeUndefined();
+  await primary.fill('Enter');
+  await expect(options.locator('#binding-error')).toContainText('reserved');
+  await primary.fill('o');
+  await options.getByLabel('close tab primary key',{exact:true}).fill('');
+  await options.locator('#key').fill('a');
+  await options.getByRole('button',{name:'save',exact:true}).click();
+  await expect(options.locator('#ok')).toHaveText('saved ✓');
+  await options.reload();
+  await expect(options.getByLabel('close tab primary key',{exact:true})).toHaveValue('');
+  await options.getByRole('button',{name:'reset command keys',exact:true}).click();
+  await expect(primary).toHaveValue('c');
+  await expect(options.getByLabel('last tab alternate key',{exact:true})).toHaveValue(';');
+  await expect(options.locator('#key')).toHaveValue('a');
+  await options.getByRole('button',{name:'save',exact:true}).click();
+  await expect(options.locator('#ok')).toHaveText('saved ✓');
+  await options.screenshot({path:test.info().outputPath('options.png'),fullPage:true});
+});

@@ -50,7 +50,9 @@ export async function selectTab(tab, index) {
 
 export async function lastTab(tab) {
   const arr = recent.get(tab.windowId) || [];
-  const prev = arr.find((id) => id !== tab.id);
-  if (prev != null) { try { await chrome.tabs.update(prev, { active: true }); } catch (_) {} }
-  return { ok: true, toast: "last tab" };
+  for (const id of arr.filter(id => id !== tab.id)) {
+    try { await chrome.tabs.update(id, { active:true }); return { ok:true, toast:'last tab' }; }
+    catch { recent.set(tab.windowId, (recent.get(tab.windowId) || []).filter(t => t !== id)); }
+  }
+  return { ok:true, toast:'no previous tab' };
 }

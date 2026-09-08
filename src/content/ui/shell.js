@@ -7,6 +7,13 @@
 // swatch dots are the one deliberate exception: they mirror each group's
 // real Chrome color, so they're data, not theme.
 const CSS = `
+  .failure { position:fixed; bottom:34px; left:12px; right:12px; padding:10px; background:#1C1C1D; color:#E4E4E5; border:1px solid #E4E4E5; display:flex; align-items:center; gap:12px; pointer-events:auto; font-size:12px; }
+  button { font:inherit; padding:4px 8px; cursor:pointer; }
+  :focus-visible { outline:2px solid #E4E4E5; outline-offset:3px; }
+  .row > span:first-child { overflow-wrap:anywhere; min-width:0; }
+  .row .meta { flex-shrink:0; }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+
   :host, * { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; box-sizing: border-box; }
   :host {
     --bg: #1C1C1D;
@@ -27,7 +34,7 @@ const CSS = `
   .panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
            background: var(--bg); color: var(--fg); border: 1px solid var(--border);
            border-radius: 8px; padding: 16px 18px; font-size: 13px; pointer-events: auto;
-           min-width: 340px; max-width: 560px; max-height: 74vh; overflow: auto;
+           width: min(560px, calc(100vw - 24px)); max-width: 560px; max-height: 74vh; overflow: auto;
            box-shadow: 0 12px 40px rgba(0,0,0,.5); }
   .panel h2 { margin: 0 0 10px; font-size: 13px; color: var(--fg); letter-spacing: .04em; }
   .panel .grid { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; }
@@ -50,7 +57,7 @@ const CSS = `
 let root;
 
 export function ui() {
-  if (root) return root;
+  if (root?.host.isConnected) return root;
   const host = document.createElement("div");
   host.id = "tabmux-host";
   host.style.cssText = "all: initial; position: fixed; z-index: 2147483647; inset: 0; pointer-events: none;";

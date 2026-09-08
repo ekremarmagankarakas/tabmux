@@ -39,7 +39,7 @@ it("closes a still-open overlay instead of stranding it when a second one opens"
 });
 
 describe("openInput", () => {
-  it("submits the current input value and closes on Enter", () => {
+  it("ignores synthetic Enter without submitting", () => {
     const onSubmit = vi.fn();
     const onCancel = vi.fn();
     openInput("lead:", "prefill", onSubmit, onCancel);
@@ -49,12 +49,12 @@ describe("openInput", () => {
     input.value = "typed value";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
-    expect(onSubmit).toHaveBeenCalledWith("typed value");
+    expect(onSubmit).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
-    expect(activeOverlay).toBeNull();
+    expect(activeOverlay).not.toBeNull();
   });
 
-  it("cancels and closes on Escape without submitting", () => {
+  it("ignores synthetic Escape without changing focus", () => {
     const onSubmit = vi.fn();
     const onCancel = vi.fn();
     openInput("lead:", "", onSubmit, onCancel);
@@ -62,8 +62,8 @@ describe("openInput", () => {
     const input = activeOverlay.el.querySelector("input");
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
-    expect(onCancel).toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(activeOverlay).toBeNull();
+    expect(activeOverlay).not.toBeNull();
   });
 });

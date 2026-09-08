@@ -1,8 +1,17 @@
-// The `prefix N` new-session prompt, `prefix d` detach prompt, and the
+import { resetTransientMode } from '../mode.js';
+import { interaction } from '../state.js';
+// The `prefix S` new-session prompt, `prefix d` detach prompt, and the
 // `prefix :` general command prompt.
 import { send, sendAsync } from "../messaging.js";
 import { flash } from "./status.js";
 import { openInput } from "./overlay.js";
+
+export function openNewGroupPrompt() {
+  openInput('new group:', '', value => {
+    const name = value.trim();
+    if (name) send({ type: 'group-create', name });
+  }, () => {});
+}
 
 // tmux `new -s <name>`: open a fresh window and name it right away.
 export function openNewSessionPrompt() {
@@ -10,7 +19,10 @@ export function openNewSessionPrompt() {
 }
 
 export async function openDetachPrompt() {
+  const token = interaction;
   const res = await sendAsync({ type: "get-session-name" });
+  if (token !== interaction) return;
+  if (res.error) { resetTransientMode(); return; }
   const def = (res && res.name) || "session-" + new Date().toISOString().slice(5, 16).replace("T", "-").replace(":", "");
   openInput("detach as:", def, (name) => { if (name) send({ type: "detach", name }); }, () => {});
 }

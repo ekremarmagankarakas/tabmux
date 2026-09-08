@@ -112,3 +112,14 @@ describe("listGroups", () => {
     expect(res.groups[1].collapsed).toBe(true);
   });
 });
+
+it('creates a fresh named group for the current tab even when the name already exists', async () => {
+  const { windowId, tabs } = fake.seedWindow([{}, {}]);
+  const existing = fake.addGroup(windowId, { title: 'work' });
+  await fake.chrome.tabs.group({ tabIds: [tabs[0].id, tabs[1].id], groupId: existing });
+  await groupsModule.createGroup({ windowId, id: tabs[0].id }, ' work ');
+  const createdId = fake.getTab(tabs[0].id).groupId;
+  expect(createdId).not.toBe(existing);
+  expect(fake.getTab(tabs[1].id).groupId).toBe(existing);
+  expect(fake.allGroups().find(group => group.id === createdId).title).toBe('work');
+});
