@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "tabmux",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drive Chrome from the keyboard like tmux: a prefix key, modal commands, tab groups, and saved sessions.",
   "permissions": [
     "tabs",
